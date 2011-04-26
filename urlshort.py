@@ -6,16 +6,16 @@ import hashlib
 from random import choice
 
 SHELVE_FILENAME =  'shelfshorturl.bg'
-POST_REDIRECT_URL = 'http://localhost:8080/%s/'
 SERVICE_URL = "http://localhost:8080/"
 ADMIN = '/admin'
 
 urls = (
+    "/",                "Home",
     ADMIN,              "Admin",
     ADMIN+"/done/(.*)", "AdminDone",
-    "/",                "Home",
     "/favicon(.*)",     "Favicon",
-    "/(.*)",           "RedirectToOthers",
+    "/url=(.*)",           "GET_API",
+    "/(.*)",            "RedirectToOthers",
 )
 
 #Messages
@@ -50,14 +50,13 @@ class RedirectToOthers:
         else:
             response = FAIL_MESSAGE
         storage.close() 
-        print response
         return response  
 
 class Admin:
     def GET(self):
         admin_form = web.form.Form(
             web.form.Textbox("url",     description="Long URL"),
-            web.form.Textbox("shortcut",description="Your own shortcut"),
+            web.form.Textbox("shortcut",description="(optional) Your own short word"),
         )
         admin_template = web.template.Template("""$def with(form)
         <!DOCTYPE HTML>
@@ -88,6 +87,20 @@ class Admin:
             response = web.seeother(ADMIN+'/done/'+shortcut)
         storage.close()
         return response
+
+class GET_API:
+    def GET(self, long_url):
+        short_url = random_shortcut(long_url)
+        storage = shelve.open(SHELVE_FILENAME)
+        if storage.has_key(short_url):
+            response = SERVICE_URL + short_url
+            print "yaay alrady there"
+            return response
+        else:
+            storage[short_url] = long_url
+            response = SERVICE_URL + short_url
+            print "oooh.. went n stored it"
+            return response
 
 class AdminDone:
     def GET(self, short_name):
