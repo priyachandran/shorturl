@@ -1,20 +1,23 @@
 #!/usr/bin/python
 
 import web
+import re
 import shelve
 import hashlib
 from random import choice
 
 SHELVE_FILENAME =  'shelfshorturl.bg'
-SERVICE_URL = "http://localhost:8080/"
-ADMIN = '/admin'
+SERVICE_URL = "http://localhost/"
+ADMIN = '/g'
+PREFIXDEF = 'g' 
+STATIC_DIR = "/static"
 
 urls = (
     "/",                "Home",
+    ADMIN +"/done/(.*)", "AdminDone",
     ADMIN,              "Admin",
-    ADMIN+"/done/(.*)", "AdminDone",
-    "/favicon(.*)",     "Favicon",
-    "/url=(.*)",           "GET_API",
+    "/favicon.ico",     "Favicon",
+    ADMIN +"/api",           "GET_API",
     "/(.*)",            "RedirectToOthers",
 )
 
@@ -26,20 +29,28 @@ FAIL_MESSAGE = 'Redirection failed, verify your link...'  # Messages
 app = web.application(urls, globals())
 
 # Forms a hash of the url and appends the short code with a predefined character.
-def random_shortcut(mylink, length=8):
-    predef = "g"
+def random_shortcut(mylink, length=5):
     hashed = hashlib.sha1()
     hashed.update(mylink)
-    digested_short = predef + hashed.hexdigest()[:length]
+    digested_short = PREFIXDEF + hashed.hexdigest()[:length]
     return digested_short
+
+def prepend_http_if_required(link):
+    if (re.match("(^)https://", link, re.IGNORECASE)):
+	return link
+    elif not (re.match("(^)http://", link, re.IGNORECASE)):
+        link = "http://" + link
+    return link
 
 class Home:
     def GET(self):
+	web.header("Content-Type","text/html; charset=utf-8")
         return HOME_MESSAGE
 
 class Favicon:
-    def GET(self, icon_name):
-        return None
+    def GET(self):
+	print "trying to return favicon"
+        return web.seeother(STATIC_DIR + "/favicon.ico")
 
 class RedirectToOthers:
     def GET(self, short_name):
@@ -54,6 +65,7 @@ class RedirectToOthers:
 
 class Admin:
     def GET(self):
+	web.header("Content-Type","text/html; charset=utf-8")
         admin_form = web.form.Form(
             web.form.Textbox("url",     description="Long URL"),
             web.form.Textbox("shortcut",description="(optional) Your own short word"),
@@ -67,7 +79,7 @@ class Admin:
           </head>
           <body onload="document.getElementById('url').focus()">
             <header><h1>Admin</h1></header>
-            <form method="POST" action="/admin">
+            <form method="POST" action=/g>
               $:form.render()
               <input type="submit" value="Shorten this long URL">
             </form>
@@ -78,32 +90,46 @@ class Admin:
 
     def POST(self):
         data = web.input()
+        data.url = prepend_http_if_required(data.url)
+	if str(data.shortcut):
+		data.shortcut = "g/" + str(data.shortcut)
         shortcut = str(data.shortcut) or random_shortcut(data.url)
         storage = shelve.open(SHELVE_FILENAME)
-        if storage.has_key(shortcut) or not data.url:
+        if not data.url:
             response = web.badrequest()
-        else:
-            storage[shortcut] = data.url
+        elif storage.has_key(shortcut):
             response = web.seeother(ADMIN+'/done/'+shortcut)
+	else :
+            storage[shortcut] = data.url
+            response = web.seeother(SERVICE_URL+ADMIN+'/done/'+shortcut)
         storage.close()
         return response
 
 class GET_API:
-    def GET(self, long_url):
+    def GET(self):
+	variables = web.input()
+	if 'url' in variables:
+		long_url = variables.url
+	else:
+		return "No URL Specified"
+	web.header("Content-Type","text/html; charset=utf-8")
+        long_url = prepend_http_if_required(long_url)
         short_url = random_shortcut(long_url)
+	if 'title' in variables:
+		title = variables.title
+		uniqueTitle = short_url + title
         storage = shelve.open(SHELVE_FILENAME)
         if storage.has_key(short_url):
             response = SERVICE_URL + short_url
-            print "yaay alrady there"
             return response
         else:
             storage[short_url] = long_url
             response = SERVICE_URL + short_url
-            print "oooh.. went n stored it"
             return response
 
 class AdminDone:
     def GET(self, short_name):
+	web.header("Content-Type","text/html; charset=utf-8")
         admin_done_template = web.template.Template("""$def with(new_url)
         <!DOCTYPE HTML>
         <html lang="en">
@@ -113,7 +139,7 @@ class AdminDone:
           </head>
           <body>
             <header><h1>Done!</h1></header>
-            <p>You created: $new_url</p>
+            <p>You created: <a href=$new_url>$new_url</a> </p>
           </body>
         </html>
         """)
