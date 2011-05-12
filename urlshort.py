@@ -7,7 +7,7 @@ import hashlib
 from random import choice
 
 SHELVE_FILENAME =  'shelfshorturl.bg'
-SERVICE_URL = "http://localhost/"
+SERVICE_URL = "http://localhost:8080"
 ADMIN = '/g'
 PREFIXDEF = 'g' 
 STATIC_DIR = "/static"
@@ -18,8 +18,10 @@ urls = (
     ADMIN,              "Admin",
     "/favicon.ico",     "Favicon",
     ADMIN +"/api",           "GET_API",
-    "/(.*)",            "RedirectToOthers",
+    "/gs(.*)",            "RedirectToOthers",
+    "/g([0-9].*)",           "Trac"
 )
+
 
 #Messages
 HOME_MESSAGE = '''Welcome to URL shortenner. 
@@ -29,10 +31,11 @@ FAIL_MESSAGE = 'Redirection failed, verify your link...'  # Messages
 app = web.application(urls, globals())
 
 # Forms a hash of the url and appends the short code with a predefined character.
-def random_shortcut(mylink, length=5):
+def random_shortcut(mylink, length=8):
     hashed = hashlib.sha1()
     hashed.update(mylink)
-    digested_short = PREFIXDEF + hashed.hexdigest()[:length]
+    digested_long = re.sub("[0-9]","",hashed.hexdigest())
+    digested_short = digested_long[:length]
     return digested_short
 
 def prepend_http_if_required(link):
@@ -46,6 +49,11 @@ class Home:
     def GET(self):
 	web.header("Content-Type","text/html; charset=utf-8")
         return HOME_MESSAGE
+
+class Trac:
+    def GET(self, number):
+	print "got a number"
+        return "Whatever you want to do with nummeric's"
 
 class Favicon:
     def GET(self):
@@ -120,12 +128,11 @@ class GET_API:
 		uniqueTitle = short_url + title
         storage = shelve.open(SHELVE_FILENAME)
         if storage.has_key(short_url):
-            response = SERVICE_URL + short_url
-            return response
+            response = SERVICE_URL + '/gs' + short_url
         else:
             storage[short_url] = long_url
-            response = SERVICE_URL + short_url
-            return response
+            response = SERVICE_URL + '/gs' + short_url
+        return response
 
 class AdminDone:
     def GET(self, short_name):
@@ -143,7 +150,7 @@ class AdminDone:
           </body>
         </html>
         """)
-        return admin_done_template(SERVICE_URL+short_name)
+        return admin_done_template(SERVICE_URL + '/gs' + short_name)
 
 if __name__ == "__main__":
     app.run()
