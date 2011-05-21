@@ -5,6 +5,7 @@ import re
 import shelve
 import hashlib
 from random import choice
+import base64
 
 SHELVE_FILENAME =  'shelfshorturl.bg'
 SERVICE_URL = "http://localhost:8080"
@@ -19,7 +20,7 @@ urls = (
     ADMIN,              "Admin",
     "/favicon.ico",     "Favicon",
     ADMIN +"/api",           "GET_API",
-    "/gs(.*)",            "RedirectToOthers",
+    "/g(.*)",            "RedirectToOthers",
     "/g([0-9].*)",           "Trac"
 )
 
@@ -33,9 +34,11 @@ app = web.application(urls, globals())
 
 # Forms a hash of the url and appends the short code with a predefined character.
 def random_shortcut(mylink):
-    hashed = hashlib.sha1()
+    hashed = hashlib.sha256()
     hashed.update(mylink)
-    digested_short = hashed.hexdigest()[:LENGTH]
+    digested_b64 = base64.b64encode(hashed.hexdigest())
+    digested_short = digested_b64[:LENGTH]
+    digested_short = re.sub("(^)[0-9]", "x", digested_short)
     return digested_short
 
 def prepend_http_if_required(link):
@@ -130,10 +133,10 @@ class GET_API:
 		uniqueTitle = short_url + title
         storage = shelve.open(SHELVE_FILENAME)
         if storage.has_key(short_url):
-            response = SERVICE_URL + '/gs' + short_url
+            response = SERVICE_URL + ADMIN + short_url
         else:
             storage[short_url] = long_url
-            response = SERVICE_URL + '/gs' + short_url
+            response = SERVICE_URL + ADMIN + short_url
         return response
 
 class AdminDone:
@@ -152,7 +155,7 @@ class AdminDone:
           </body>
         </html>
         """)
-        return admin_done_template(SERVICE_URL + '/gs' + short_name)
+        return admin_done_template(SERVICE_URL + ADMIN + short_name)
 
 if __name__ == "__main__":
     app.run()
