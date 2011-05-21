@@ -4,7 +4,6 @@ import web
 import re
 import shelve
 import hashlib
-import base64
 from random import choice
 
 SHELVE_FILENAME =  'shelfshorturl.bg'
@@ -33,15 +32,16 @@ FAIL_MESSAGE = 'Redirection failed, verify your link...'  # Messages
 app = web.application(urls, globals())
 
 # Forms a hash of the url and appends the short code with a predefined character.
-def random_shortcut(mylink, length=5):
-    hashed = hashlib.sha256()
+def random_shortcut(mylink):
+    hashed = hashlib.sha1()
     hashed.update(mylink)
-    encoded_base64 = base64.b64encode(hashed.hexdigest(),"ym")
-    encoded_short = encoded_base64[:LENGTH]
-    return encoded_short
+    digested_short = hashed.hexdigest()[:LENGTH]
+    return digested_short
 
 def prepend_http_if_required(link):
     if (re.match("(^)https://", link, re.IGNORECASE)):
+	return link
+    elif (re.match("(^)data:", link, re.IGNORECASE)):
 	return link
     elif not (re.match("(^)http://", link, re.IGNORECASE)):
         link = "http://" + link
