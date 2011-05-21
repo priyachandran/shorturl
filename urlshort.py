@@ -19,6 +19,7 @@ urls = (
     ADMIN +"/done/(.*)", "AdminDone",
     ADMIN,              "Admin",
     "/favicon.ico",     "Favicon",
+    ADMIN + "/urlhistory", "ListUrl",
     ADMIN +"/api",           "GET_API",
     "/g(.*)",            "RedirectToOthers",
     "/g([0-9].*)",           "Trac"
@@ -137,13 +138,43 @@ class GET_API:
         else:
             storage[short_url] = long_url
             response = SERVICE_URL + ADMIN + short_url
+        storage.close()
         return response
+
+
+class ListUrl:
+    def GET(self):
+	web.header("Content-Type","text/html; charset=utf-8")
+        urllist = ""
+        storage = shelve.open(SHELVE_FILENAME)
+        placeholder_top = """
+       <!DOCTYPE HTML>
+        <html lang="en">
+          <head>
+            <meta charset=utf-8>
+            <title>URL Logger</title>
+          </head>
+          <body>
+            <header><h1>URL's created on http://jpb.li</h1></header>
+"""
+
+#            <p>You created: <a href=$new_url>$new_url</a> </p>
+        placeholder_bottom = """
+          </body>
+        </html>
+"""
+        for shortlink, fulllink in storage.items():
+            urllist = urllist + "<p>%s : <a href=%s>%s</a> </p>" %(SERVICE_URL + ADMIN +  shortlink, fulllink, fulllink )
+        placeholder = placeholder_top + urllist + placeholder_bottom
+        storage.close()
+        list_template = web.template.Template(placeholder)
+        return placeholder
 
 class AdminDone:
     def GET(self, short_name):
 	web.header("Content-Type","text/html; charset=utf-8")
         admin_done_template = web.template.Template("""$def with(new_url)
-        <!DOCTYPE HTML>
+       <!DOCTYPE HTML>
         <html lang="en">
           <head>
             <meta charset=utf-8>
