@@ -4,12 +4,14 @@ import web
 import re
 import shelve
 import hashlib
+import base64
 from random import choice
 
 SHELVE_FILENAME =  'shelfshorturl.bg'
 SERVICE_URL = "http://localhost:8080"
 ADMIN = '/g'
 PREFIXDEF = 'g' 
+LENGTH = 4
 STATIC_DIR = "/static"
 
 urls = (
@@ -31,12 +33,12 @@ FAIL_MESSAGE = 'Redirection failed, verify your link...'  # Messages
 app = web.application(urls, globals())
 
 # Forms a hash of the url and appends the short code with a predefined character.
-def random_shortcut(mylink, length=8):
-    hashed = hashlib.sha1()
+def random_shortcut(mylink, length=5):
+    hashed = hashlib.sha256()
     hashed.update(mylink)
-    digested_long = re.sub("[0-9]","",hashed.hexdigest())
-    digested_short = digested_long[:length]
-    return digested_short
+    encoded_base64 = base64.b64encode(hashed.hexdigest(),"ym")
+    encoded_short = encoded_base64[:LENGTH]
+    return encoded_short
 
 def prepend_http_if_required(link):
     if (re.match("(^)https://", link, re.IGNORECASE)):
