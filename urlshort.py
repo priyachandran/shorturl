@@ -1,8 +1,9 @@
 #!/usr/bin/python
 
 import web
-import re
 import shelve
+import time
+import re
 import hashlib
 from random import choice
 import base64
@@ -51,6 +52,20 @@ def prepend_http_if_required(link):
         link = "http://" + link
     return link
 
+
+class urlClass:
+    def __init__(self, longurl, mytitle):
+        self.longurl =  longurl
+        self.title = mytitle
+        self.urlStamp = time.asctime(time.gmtime())
+
+    def getLongUrl(self):
+        return self.longurl
+
+    def getTime(self):
+        return self.urlStamp
+
+
 class Home:
     def GET(self):
 	web.header("Content-Type","text/html; charset=utf-8")
@@ -58,12 +73,10 @@ class Home:
 
 class Trac:
     def GET(self, number):
-	print "got a number"
         return "Whatever you want to do with nummeric's"
 
 class Favicon:
     def GET(self):
-	print "trying to return favicon"
         return web.seeother(STATIC_DIR + "/favicon.ico")
 
 class RedirectToOthers:
@@ -71,7 +84,8 @@ class RedirectToOthers:
         storage = shelve.open(SHELVE_FILENAME)                 
         short_name = str(short_name) # shelve does not allow unicode keys
         if storage.has_key(short_name):
-            response = web.redirect(storage[short_name])
+            destination = storage[short_name]
+            response = web.redirect(destination.getLongUrl())
         else:
             response = FAIL_MESSAGE
         storage.close() 
@@ -83,6 +97,7 @@ class Admin:
         admin_form = web.form.Form(
             web.form.Textbox("url",     description="Long URL"),
             web.form.Textbox("shortcut",description="(optional) Your own short word"),
+            web.form.Textbox("title",description="(optional) URL Title"),
         )
         admin_template = web.template.Template("""$def with(form)
         <!DOCTYPE HTML>
@@ -108,13 +123,18 @@ class Admin:
 	if str(data.shortcut):
 		data.shortcut = "g/" + str(data.shortcut)
         shortcut = str(data.shortcut) or random_shortcut(data.url)
+        if str(data.title):
+            siteTitle = data.title
+        else:
+            siteTitle = ""
         storage = shelve.open(SHELVE_FILENAME)
         if not data.url:
             response = web.badrequest()
         elif storage.has_key(shortcut):
             response = web.seeother(ADMIN+'/done/'+shortcut)
 	else :
-            storage[shortcut] = data.url
+            myUrl = urlClass(data.url, siteTitle)
+            storage[shortcut] = myUrl
             response = web.seeother(SERVICE_URL+ADMIN+'/done/'+shortcut)
         storage.close()
         return response
@@ -130,13 +150,15 @@ class GET_API:
         long_url = prepend_http_if_required(long_url)
         short_url = random_shortcut(long_url)
 	if 'title' in variables:
-		title = variables.title
-		uniqueTitle = short_url + title
+		urlTitle = variables.title
+        else:
+            urlTitle = ""
         storage = shelve.open(SHELVE_FILENAME)
         if storage.has_key(short_url):
             response = SERVICE_URL + ADMIN + short_url
         else:
-            storage[short_url] = long_url
+            myUrl = urlClass(long_url, urlTitle)
+            storage[short_url] = myUrl
             response = SERVICE_URL + ADMIN + short_url
         storage.close()
         return response
@@ -158,13 +180,16 @@ class ListUrl:
             <header><h1>URL's created on http://jpb.li</h1></header>
 """
 
-#            <p>You created: <a href=$new_url>$new_url</a> </p>
         placeholder_bottom = """
           </body>
         </html>
 """
-        for shortlink, fulllink in storage.items():
-            urllist = urllist + "<p>%s : <a href=%s>%s</a> </p>" %(SERVICE_URL + ADMIN +  shortlink, fulllink, fulllink )
+        unsorted = []
+        for shortlink, urlObj in storage.items():
+            unsorted.append([SERVICE_URL+ADMIN+shortlink ,  urlObj.urlStamp, urlObj.title,   urlObj.longurl])
+        sorted_url = sorted(unsorted, key=lambda timestamp: timestamp[1], reverse=True)
+        for i in sorted_url:
+            urllist = urllist + "<p>%s : %s : <a href=%s>%s</a> </p>" %(i[1], i[2], i[0], i[3])
         placeholder = placeholder_top + urllist + placeholder_bottom
         storage.close()
         list_template = web.template.Template(placeholder)
