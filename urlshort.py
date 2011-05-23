@@ -7,6 +7,7 @@ import re
 import hashlib
 from random import choice
 import base64
+import urllib
 
 SHELVE_FILENAME =  'shelfshorturl.bg'
 SERVICE_URL = "http://localhost:8080"
@@ -56,7 +57,10 @@ def prepend_http_if_required(link):
 class urlClass:
     def __init__(self, longurl, mytitle):
         self.longurl =  longurl
-        self.title = mytitle
+        if mytitle is "":
+            self.title = "No Title supplied"
+        else:                                      
+            self.title = mytitle
         self.urlStamp = time.asctime(time.gmtime())
 
     def getLongUrl(self):
