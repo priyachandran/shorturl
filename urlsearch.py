@@ -1,6 +1,6 @@
 import re
 import urllib2
-import lxml.html
+from BeautifulSoup import BeautifulSoup
 
 def read_url(url, until=None, chunk=100):
     try:
@@ -22,10 +22,13 @@ def read_url(url, until=None, chunk=100):
         data = response.read()
     return unicode(data, encoding)
 
-d = read_url('http://python.org/', until='</title>')
+d = read_url('http://gmail.com/', until='</title>')
 
-stringA = str(d)
+soup = BeautifulSoup(d)
+print soup.title.string
+stringA = "hahahah<title> priya \n \\t \r </title>"
+print stringA
 stringB = "<title>"
 stringC = "</title>"
 
-print re.search(re.escape(stringB)+"(.*?)"+re.escape(stringC),stringA).group(1)
+#print re.search(re.escape(stringB)+"\s(.*?)\s"+re.escape(stringC),stringA).group(1)

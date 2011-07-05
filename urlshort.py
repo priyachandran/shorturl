@@ -6,8 +6,12 @@ import time
 import re
 import hashlib
 from random import choice
+import lxml.html
 import base64
-import urllib
+import urllib2
+import pickle
+from signal import signal, SIGQUIT, SIGINT, SIGTERM
+import os
 
 SHELVE_FILENAME =  'shelfshorturl.bg'
 SERVICE_URL = "http://localhost:8080"
@@ -27,13 +31,27 @@ urls = (
     "/g([0-9].*)",           "Trac"
 )
 
-
 #Messages
 HOME_MESSAGE = '''Welcome to URL shortenner. 
 		/admin to get controls'''
 FAIL_MESSAGE = 'Redirection failed, verify your link...'  # Messages
 
+TERMSIGS = (SIGQUIT, SIGINT, SIGTERM,)
+
+#first run requires a logger to be defined.
+#logger = [] 
+#subsequent runs use logger object already created.
+
+output = open('url-logger.pkl', 'r')
+logger = pickle.load(output)
+print logger
+output.close()
+print logger
+print "*********"
+
+
 app = web.application(urls, globals())
+
 
 # Forms a hash of the url and appends the short code with a predefined character.
 def random_shortcut(mylink):
@@ -44,6 +62,14 @@ def random_shortcut(mylink):
     digested_short = re.sub("(^)[0-9]", "x", digested_short)
     return digested_short
 
+def append_title_for_logging(url):
+    try:
+        d = urllib2.urlopen(url)
+    except urllib2.URLError:
+        return u'Unable to retrieve title'
+    t = lxml.html.parse(url)
+    return t.find(".//title").text
+
 def prepend_http_if_required(link):
     if (re.match("(^)https://", link, re.IGNORECASE)):
 	return link
@@ -53,12 +79,27 @@ def prepend_http_if_required(link):
         link = "http://" + link
     return link
 
+def do_logging(loggingUrl, shortcut):
+    global logger
+    logging = []
+    logging.append(loggingUrl.urlStamp)
+    logging.append(loggingUrl.title)
+    logging.append(loggingUrl.longurl)
+    logging.append(shortcut)
+    if len(logger) > 20:
+        logger.pop()
+    logger.insert(0,logging)
+    print "printing logger :: do logging"
+    print logger
+    save_logger()
+
+# TODO implement class logger for betterness.
 
 class urlClass:
     def __init__(self, longurl, mytitle):
         self.longurl =  longurl
         if mytitle is "":
-            self.title = "No Title supplied"
+            self.title = append_title_for_logging(longurl)
         else:                                      
             self.title = mytitle
         self.urlStamp = time.asctime(time.gmtime())
@@ -139,6 +180,8 @@ class Admin:
 	else :
             myUrl = urlClass(data.url, siteTitle)
             storage[shortcut] = myUrl
+            responseurl = SERVICE_URL+ADMIN+shortcut
+            do_logging(myUrl, responseurl)
             response = web.seeother(SERVICE_URL+ADMIN+'/done/'+shortcut)
         storage.close()
         return response
@@ -146,33 +189,32 @@ class Admin:
 class GET_API:
     def GET(self):
 	variables = web.input()
+	web.header("Content-Type","text/html; charset=utf-8")
 	if 'url' in variables:
 		long_url = variables.url
 	else:
 		return "No URL Specified"
-	web.header("Content-Type","text/html; charset=utf-8")
-        long_url = prepend_http_if_required(long_url)
-        short_url = random_shortcut(long_url)
 	if 'title' in variables:
 		urlTitle = variables.title
         else:
             urlTitle = ""
+        long_url = prepend_http_if_required(long_url)
+        short_url = random_shortcut(long_url)
         storage = shelve.open(SHELVE_FILENAME)
+        myUrl = urlClass(long_url, urlTitle)
         if storage.has_key(short_url):
             response = SERVICE_URL + ADMIN + short_url
         else:
-            myUrl = urlClass(long_url, urlTitle)
             storage[short_url] = myUrl
             response = SERVICE_URL + ADMIN + short_url
+        do_logging(myUrl, response)
         storage.close()
         return response
-
 
 class ListUrl:
     def GET(self):
 	web.header("Content-Type","text/html; charset=utf-8")
         urllist = ""
-        storage = shelve.open(SHELVE_FILENAME)
         placeholder_top = """
        <!DOCTYPE HTML>
         <html lang="en">
@@ -188,14 +230,12 @@ class ListUrl:
           </body>
         </html>
 """
-        unsorted = []
-        for shortlink, urlObj in storage.items():
-            unsorted.append([SERVICE_URL+ADMIN+shortlink ,  urlObj.urlStamp, urlObj.title,   urlObj.longurl])
-        sorted_url = sorted(unsorted, key=lambda timestamp: timestamp[1], reverse=True)
-        for i in sorted_url:
-            urllist = urllist + "<p>%s : %s : <a href=%s>%s</a> </p>" %(i[1], i[2], i[0], i[3])
+        for loggedurl in logger:
+            print loggedurl
+            urllist_string = "<p>%s : <a href=%s>%s</a> </p>" %(loggedurl[0], loggedurl[3], loggedurl[1])
+            #TODO set up the right short url
+            urllist = urllist + urllist_string
         placeholder = placeholder_top + urllist + placeholder_bottom
-        storage.close()
         list_template = web.template.Template(placeholder)
         return placeholder
 
@@ -217,5 +257,30 @@ class AdminDone:
         """)
         return admin_done_template(SERVICE_URL + ADMIN + short_name)
 
+def terminate(sig, frame):
+    print 'Received Signal:', sig
+    print "exiting and printing logger :: terminate"
+    os._exit(0)
+
+def save_logger():
+    global logger
+    print "print logger :: save_logger"
+    print logger
+    output = open('url-logger.pkl', 'w')
+    pickle.dump(logger, output)
+    output.close()
+
 if __name__ == "__main__":
+    try:
+        for sig in TERMSIGS:
+            signal(sig, terminate)
+    except:
+        pass
+
     app.run()
+
+
+##
+##TODO   failures 
+## http://www.gmail.com and www.butterfly.com
+## save logger b/w restarts
